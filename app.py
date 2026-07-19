@@ -7,23 +7,13 @@ import io
 # Configuration de la page
 st.set_page_config(layout="wide", page_title="The Options Seller - Trade Log")
 
-# --- RÉCUPÉRATION SÉCURISÉE DES IDENTIFIANTS DEPUIS LES SECRETS DE STREAMLIT ---
+# --- RÉCUPÉRATION SÉCURISÉE DES IDENTIFIANTS ---
 try:
     IBKR_TOKEN = st.secrets["IBKR_TOKEN"]
     IBKR_QUERY_ID = st.secrets["IBKR_QUERY_ID"]
 except Exception:
     st.error("⚠️ Les identifiants IBKR (Secrets) ne sont pas configurés sur Streamlit Cloud.")
     st.stop()
-
-st.markdown("""
-<style>
-    .badge-bought { background-color: #e3f2fd; color: #0d6efd; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 0.85em; }
-    .badge-sold { background-color: #fff3cd; color: #856404; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 0.85em; }
-    .badge-open { background-color: #f3e5f5; color: #7b1fa2; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 0.85em; }
-    .profit-green { color: #2e7d32; font-weight: bold; }
-    .loss-red { color: #c62828; font-weight: bold; }
-</style>
-""", unsafe_allow_html=True)
 
 @st.cache_data(ttl=3600)
 def fetch_ibkr_flex_data(token, query_id):
@@ -38,12 +28,11 @@ def fetch_ibkr_flex_data(token, query_id):
                 url_delivery = f"https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement?t={token}&q={ref_code}&v=3"
                 data_response = requests.get(url_delivery)
                 return data_response.text
-    except Exception as e:
+    except Exception:
         pass
     return None
 
 def parse_and_clean_data(csv_text):
-    # Données par défaut (simulation parfaite de tes captures d'écran)
     default_data = [
         {"#": 935, "DATE": "7/10/26", "TICKER": "ES", "BOUGHT/SOLD": "Bought", "CONTRACT": "7540/7450 P", "EXPIRATION": "7/10/26", "ENTRY": -2.70, "EXIT": "Expired", "PROFIT PER CONTRACT": 135.00, "PROFIT %": 1.00, "NOTE": "Put credit spread"},
         {"#": 934, "DATE": "7/10/26", "TICKER": "TSLA", "BOUGHT/SOLD": "Bought", "CONTRACT": "415 C", "EXPIRATION": "7/13/26", "ENTRY": 2.48, "EXIT": -2.95, "PROFIT PER CONTRACT": 47.00, "PROFIT %": 0.1895, "NOTE": ""},
@@ -57,7 +46,6 @@ def parse_and_clean_data(csv_text):
         
     try:
         df = pd.read_csv(io.StringIO(csv_text))
-        # Si le fichier IBKR est valide mais n'a pas les colonnes attendues, on applique la démo
         if "EXIT" not in df.columns:
             return pd.DataFrame(default_data)
         return df
@@ -73,12 +61,19 @@ if st.button("🔄 Actualiser les données IBKR"):
 raw_data = fetch_ibkr_flex_data(IBKR_TOKEN, IBKR_QUERY_ID)
 df_trades = parse_and_clean_data(raw_data)
 
-# Calcul des statistiques en toute sécurité
-closed_trades = len(df_trades[df_trades['EXIT'] != 'OPEN']) if 'EXIT' in df_trades.columns else 0
-open_trades = len(df_trades[df_trades['EXIT'] == 'OPEN']) if 'EXIT' in df_trades.columns else 0
+closed_trades = len(df_trades[df_trades['EXIT'] != 'OPEN'])
+open_trades = len(df_trades[df_trades['EXIT'] == 'OPEN'])
 st.write(f"**{closed_trades} closed · {open_trades} open**")
 
+# Construction du code HTML global intégrant le CSS directement pour éviter tout blocage
 html_table = """
+<style>
+    .badge-bought { background-color: #e3f2fd !important; color: #0d6efd !important; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 0.85em; display: inline-block; }
+    .badge-sold { background-color: #fff3cd !important; color: #856404 !important; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 0.85em; display: inline-block; }
+    .badge-open { background-color: #f3e5f5 !important; color: #7b1fa2 !important; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 0.85em; display: inline-block; }
+    .profit-green { color: #2e7d32 !important; font-weight: bold; }
+    .loss-red { color: #c62828 !important; font-weight: bold; }
+</style>
 <table style='width:100%; border-collapse: collapse; font-family: sans-serif;'>
     <tr style='border-bottom: 2px solid #f1f1f1; color: #888888; font-size: 0.9em; text-align: left;'>
         <th style='padding: 12px;'>#</th>
@@ -125,4 +120,6 @@ for _, row in df_trades.iterrows():
     """
 
 html_table += "</table>"
-st.markdown(html_table, unsafe_allow_html=True)
+
+# Utilisation du composant HTML natif pour forcer le rendu visuel sans faille
+st.components.v1.html(html_table, height=600, scrolling=True)
